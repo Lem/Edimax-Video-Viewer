@@ -1,6 +1,6 @@
 /*
 * SDL-part of the edimax video-util
-* alpha 0.01
+* alpha 0.02
 *
 * This program is free software; you can redistribute it and/or modify
 * it under the terms of the GNU General Public License version 2 as
