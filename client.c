@@ -43,13 +43,13 @@
 struct iplinkedlist{
   struct iplinkedlist* next;
   char ip[16];
-}
+};
 
 /*
   this works similar to printf
   it prints the message and does some cleanup
 */
-void error(const char * str, ...){
+void error(char * str, ...){
   va_list args;
   va_start(args, str);
   vprintf(str, args);
@@ -163,7 +163,7 @@ void udp_get(void) {
       continue;
 
     /*if not add it to the list*/
-    ptr->next = malloc(sizeof iplinkedlist);
+    ptr->next = malloc(sizeof(struct iplinkedlist));
     ptr->next->next = NULL;
     strncpy(ptr->next->ip, ip ,15);
     ip[15]='\0';
@@ -174,12 +174,12 @@ void udp_get(void) {
       (we listen on the same port that we broadcast to*/
     {
       /*check if we already got a response from the peer*/
-      struct iplinkedlist* ptr = &root;
+      struct iplinkedlist* rootptr = &root;
       int proceed = 1;
-      while(ptr->next)
+      while(rootptr->next)
       {
-        ptr = ptr->next;
-        if(!strcmp(ptr->ip, ip))
+        ptr = rootptr->next;
+        if(!strcmp(rootptr->ip, ip))
         {  
           proceed = 0;/*already got response, try next response*/
           break;
@@ -189,9 +189,9 @@ void udp_get(void) {
         continue;
 
       /*if not add it to the list*/
-      ptr->next = malloc(sizeof iplinkedlist);
+      ptr->next = malloc(sizeof(struct iplinkedlist));
       ptr->next->next = NULL;
-      strncpy(ptr->next->ip, ip ,15);
+      strncpy(rootptr->next->ip, ip ,15);
       ip[15]='\0';
 
       /*now, parse the received data*/
@@ -426,7 +426,7 @@ int main(int argc, char *argv[]) {
     */
     res = init_display(320,240); 
 	  if(res == -1)
-      exit("init_display failed!\n");
+      error("init_display failed!\n");
 
     /* main-loop for pseudo-video*/
 	  while(1) {

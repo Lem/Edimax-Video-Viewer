@@ -1,7 +1,5 @@
 Hint:
 You need maybe some SDL-libs. Just try it.
 
-!! IP of cam is currently hardcoded at client.c !!
-
 Compiling:
 gcc -o edimax-video client.c display.c `sdl-config --libs` -lSDL_image
