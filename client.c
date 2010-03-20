@@ -95,7 +95,7 @@ void show_help(char *argv[]) {
   requested. (no authentication required)
 */
 void udp_get(void) {
-	int sockfd, n, i = 0, cameras = 0;
+	int sockfd, n, i = 0, cameras = 0, proceed;
 	struct sockaddr_in dest, fromcam; /*connector's address information*/
 	struct timeval tval;/*receive timeout*/
 	size_t addr_len;
@@ -103,7 +103,7 @@ void udp_get(void) {
 	char text[623], passwd[512], name[512], *ip;
 	FILE *file;
 	struct iplinkedlist root;/*list of ip's that already responded*/
-
+  struct iplinkedlist* rootptr;
 	root.next = NULL;
 
 	tval.tv_sec = 2;
@@ -147,40 +147,19 @@ void udp_get(void) {
 
 		ip = inet_ntoa(fromcam.sin_addr);
 
-		/*check if we already got a response from the peer*/
-		struct iplinkedlist* ptr = &root;
-		int proceed = 1;
-
-		while(ptr->next){
-			ptr = ptr->next;
-			if(!strcmp(ptr->ip, ip)){  
-				proceed = 0;/*already got response, try next response*/
-				break;
-			}
-		}
-    
-		if(!proceed)
-			continue;
-
-		/*if not add it to the list*/
-		ptr->next = malloc(sizeof(struct iplinkedlist));
-		ptr->next->next = NULL;
-		strncpy(ptr->next->ip, ip ,15);
-		ip[15]='\0';
-
 		if(memcmp(text, info_leak, sizeof info_leak)) 
 		/*matches all responses except ours
 		since our request gets received by ourselves too 
 		(we listen on the same port that we broadcast to*/
 		{
 			/*check if we already got a response from the peer*/
-			struct iplinkedlist* rootptr = &root;
-			int proceed = 1;
+			rootptr = &root;
+			proceed = 1;
 			while(rootptr->next){
-				ptr = rootptr->next;
+				rootptr = rootptr->next;
 			
 				if(!strcmp(rootptr->ip, ip)){  
-	       	  			proceed = 0;/*already got response, try next response*/
+	       	proceed = 0;/*already got response, try next response*/
 					break;
 				}
 			}
@@ -189,10 +168,10 @@ void udp_get(void) {
 				continue;
 	
 			/*if not add it to the list*/
-			ptr->next = malloc(sizeof(struct iplinkedlist));
-			ptr->next->next = NULL;
+			rootptr->next = malloc(sizeof(struct iplinkedlist));
+			rootptr->next->next = NULL;
 			strncpy(rootptr->next->ip, ip ,15);
-			ip[15]='\0';
+			rootptr->next->ip[15]='\0';
 
 			/*now, parse the received data*/
 			if(n<=333)/*not enough data ;)*/
@@ -247,6 +226,7 @@ void udp_get(void) {
 	strcpy(passwd, text+333);
 	printf("Password for Cam %s(%s) is: %s\n", name, inet_ntoa(fromcam.sin_addr), passwd);
 */
+
   /*remember to free the ip linked list, when you remove this exit*/
 	exit(0);
 }
@@ -305,7 +285,7 @@ int pic_req(int sockfd, char *picbuffer, int len) {
 		if(offset>1 && picbuffer[offset-2] == (char)0xff && picbuffer[offset-1] == (char)0xd9)
 			loop=0;
 
-		if(loop && offset >= PICP_SIZE) 
+		if(loop && offset >= len) 
 		{/*this should NOT happen*/
 			printf("buffer filled but no valid jpeg arrived!\n");
 			return -1;
@@ -391,7 +371,7 @@ int main(int argc, char *argv[]) {
 	
 	memset(&dest, 0, sizeof(dest));
 	dest.sin_family = AF_INET;
-	dest.sin_addr.s_addr = inet_addr(ip); /* set destination IP number */ 
+	dest.sin_addr.s_addr = inet_addr(ip); /* set destination IP number */  
 	dest.sin_port = htons(port);          /* set destination port number */
 
 	if (connect(sockfd, (struct sockaddr *)&dest, sizeof(struct sockaddr)) == -1)
@@ -429,17 +409,16 @@ int main(int argc, char *argv[]) {
 				continue;
 			}
 			if(!inited){
-        
-			width = ntohs(*(short*)(picbuffer+8));
-			height = ntohs(*(short*)(picbuffer+10));
+        width = ntohs(*(short*)(picbuffer+8));
+			  height = ntohs(*(short*)(picbuffer+10));
 
-			res = init_display(320,240); 
+			  res = init_display(320,240); 
 		
-			if(res == -1)
-				error("init_display failed!\n");
+			  if(res == -1)
+				  error("init_display failed!\n");
 		
-			printf("image dimensions: %ix%i\n", width, height);
-			inited=1;
+			  printf("image dimensions: %ix%i\n", width, height);
+			  inited=1;
 			}
 		
 			show_jpegmem(picbuffer+28, len-28);
