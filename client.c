@@ -33,7 +33,7 @@
 #define PORT 4321
 /* #define LOGIN_SIZE 120 size of login-packet, no longer used */
 /* buffer size */
-#define PICP_SIZE 30000 
+#define PICP_SIZE 50000 
 #define VERSION "alpha 0.03"
 
 /*
@@ -267,7 +267,7 @@ int pic_req(int sockfd, char *picbuffer, int len) {
 	memset(&recbuffer, 0, sizeof(recbuffer));
 	memset(picbuffer, 0, len);
  
-	if((n = write(sockfd, picrp, sizeof(picrp))) == -1 )
+	if((n = write(sockfd, picrp, sizeof(picrp))) < sizeof(picrp) )
 		error("Error while write picrp");
 	
 	while(loop)
@@ -283,7 +283,9 @@ int pic_req(int sockfd, char *picbuffer, int len) {
 			offset += n;
 		}
 		if(offset>1 && picbuffer[offset-2] == (char)0xff && picbuffer[offset-1] == (char)0xd9)
+		{
 			loop=0;
+		}
 
 		if(loop && offset >= len) 
 		{/*this should NOT happen*/
