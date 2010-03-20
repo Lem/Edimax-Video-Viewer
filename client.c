@@ -409,16 +409,16 @@ int main(int argc, char *argv[]) {
 				continue;
 			}
 			if(!inited){
-        width = ntohs(*(short*)(picbuffer+8));
-			  height = ntohs(*(short*)(picbuffer+10));
+				width = ntohs(*(short*)(picbuffer+8));
+				height = ntohs(*(short*)(picbuffer+10));
 
-			  res = init_display(320,240); 
+				res = init_display(width,height); 
 		
-			  if(res == -1)
-				  error("init_display failed!\n");
+				if(res == -1)
+					error("init_display failed!\n");
 		
-			  printf("image dimensions: %ix%i\n", width, height);
-			  inited=1;
+				printf("image dimensions: %ix%i\n", width, height);
+				inited=1;
 			}
 		
 			show_jpegmem(picbuffer+28, len-28);
