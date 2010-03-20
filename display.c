@@ -17,10 +17,13 @@
 #include <stdio.h>
 #include <string.h>
 
-SDL_Surface *screen;
+SDL_Surface *screen = NULL;
 
 int init_display(int x, int y)
 {
+  if(screen)
+    return;
+
   int res = SDL_Init(SDL_INIT_VIDEO);
   if(res)
   {
@@ -47,6 +50,8 @@ int init_display(int x, int y)
 
 int close_display()
 {
+  if(!screen)
+    return 1;
   SDL_FreeSurface(screen);
   IMG_Quit();
   SDL_Quit();

