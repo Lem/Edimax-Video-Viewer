@@ -361,7 +361,6 @@ int main(int argc, char *argv[]) {
 		    break;
 	    case 'a':
 		    udp_get();
-		    /*printf("Adminpw lookup not included yet\n"); *//* now included ;) */
 		    exit(0);
         break;
 	    case 'h':
@@ -382,8 +381,6 @@ int main(int argc, char *argv[]) {
   }
   ip[15]='\0';
   
-	/*printf("PID: %d\n", getpid(), ip);*/
-
   /*fixes some issues*/
 	signal(SIGINT, sigintfix);
 
@@ -419,22 +416,27 @@ int main(int argc, char *argv[]) {
 	  fclose(file);
     exit(0);
   } else {
-    /* FIX: Add option to define other resolutions
-       or extract it from the picture response
-       e.g. put this in the following loop when the 
-       resolution is found in the response
-    */
-    res = init_display(320,240); 
-	  if(res == -1)
-      error("init_display failed!\n");
-
     /* main-loop for pseudo-video*/
-	  while(1) {
+	  unsigned short width, height;
+    int inited = 0;
+    
+    while(1) {
 		  len = pic_req(sockfd, picbuffer, sizeof picbuffer);
-      if(len == -1 || len < 30)
+      if(len < 30)
       {
         printf("Getting picture from cam failed.. retrying\n");
         continue;
+      }
+      if(!inited)
+      {
+        width = ntohs(*(short*)(picbuffer+8));
+        height = ntohs(*(short*)(picbuffer+10));
+
+        res = init_display(320,240); 
+	      if(res == -1)
+          error("init_display failed!\n");
+        printf("image dimensions: %ix%i\n", width, height);
+        inited=1;
       }
       show_jpegmem(picbuffer+28, len-28);
 			
