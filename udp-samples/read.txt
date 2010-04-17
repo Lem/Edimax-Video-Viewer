@@ -1,0 +1,4 @@
+Samples send from Windows Admin-Tool for gathering information
+to build our own ;)
+
+We need to know max length of different details and such stuff.
